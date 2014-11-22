@@ -1,0 +1,35 @@
+.table, .matrix-table {
+    color: #303030;
+    width: 100% !important;
+}
+
+.table-row-column-header {
+}
+
+.table-column-column-header, .table-column-row-header {
+    background-color: #aaaaaa;
+    color: #ffffff;
+    font-weight: bold;
+    text-align: center !important;
+}
+
+.vertical-align-top {
+    vertical-align: top !important;
+}
+
+.text-align-center {
+    text-align: center !important;
+}
+
+.table-row-odd {
+    background-color: #eeeeee;
+}
+
+.table, .table-canton, .table-row, .table-column, .table-column-column-header, .table-column-row-header {
+    border-color: #ffffff !important;
+}
+
+.matrix-table, .matrix-row, .matrix-column {
+    border: none !important;
+    text-align: center !important;
+}
