@@ -1,13 +1,9 @@
 .table, .matrix-table {
-    color: #303030;
     width: 100% !important;
 }
 
-.table-row-column-header {
-}
-
-.table-column-column-header, .table-column-row-header {
-    background-color: #aaaaaa;
+.table-row-header, .table-data-header {
+    background-color: #4183c4;
     color: #ffffff;
     font-weight: bold;
     text-align: center !important;
@@ -22,14 +18,14 @@
 }
 
 .table-row-odd {
-    background-color: #eeeeee;
-}
-
-.table, .table-canton, .table-row, .table-column, .table-column-column-header, .table-column-row-header {
-    border-color: #ffffff !important;
+    background-color: #ecf3f9;
 }
 
 .matrix-table, .matrix-row, .matrix-column {
     border: none !important;
     text-align: center !important;
+}
+
+.table, .table-canton, .table-row-header-group, .table-row-header, .table-data-header, .table-row, .table-data {
+    border-color: #ffffff !important;
 }
