@@ -5,25 +5,25 @@ import numpy as np
 import re
 from contextlib import contextmanager
 from copy import deepcopy
-from collections import OrderedDict
-from operator import (
-    add, div, mul, pow, sub, iadd, idiv, imul, ipow, isub)
+from collections import Iterator, Mapping, OrderedDict, Sequence
+from operator import (add, mul, pow, sub, iadd, imul, ipow, isub)
+
+try:
+    from operator import div, idiv
+except ImportError:
+    from operator import truediv, itruediv
+
+    div = truediv
+    idiv = itruediv
 from pandas import Series
 
-from colour import (
-    CaseInsensitiveMapping,
-    CubicSplineInterpolator,
-    Extrapolator,
-    LinearInterpolator,
-    PchipInterpolator,
-    SpragueInterpolator,
-    as_numeric,
-    is_numeric,
-    tsplit,
-    tstack,
-    warning)
+from colour import (CaseInsensitiveMapping, CubicSplineInterpolator,
+                    Extrapolator, LinearInterpolator, PchipInterpolator,
+                    SpragueInterpolator, as_numeric, is_numeric, is_string,
+                    tsplit, tstack, warning)
 
 np.set_printoptions(formatter={'float': '{:0.8f}'.format})
+
 
 # TODO: Is this the right name for the interpolator? Should we call the default
 # null value `default`?
@@ -263,10 +263,11 @@ class NullInterpolator(object):
 
         index = nearest_index(self._x, x)
         values = self._y[index]
-        values[~np.isclose(self._x[index],
-                           x,
-                           rtol=self._absolute_tolerance,
-                           atol=self._relative_tolerance)] = self._default
+        values[~np.isclose(
+            self._x[index],
+            x,
+            rtol=self._absolute_tolerance,
+            atol=self._relative_tolerance)] = self._default
 
         return values
 
@@ -278,8 +279,8 @@ class NullInterpolator(object):
         if len(self._x) != len(self._y):
             raise ValueError(
                 ('"x" independent and "y" dependent variables have different '
-                 'dimensions: "{0}", "{1}"').format(len(self._x),
-                                                    len(self._y)))
+                 'dimensions: "{0}", "{1}"').format(
+                     len(self._x), len(self._y)))
 
     def _validate_interpolation_range(self, x):
         """
@@ -297,19 +298,24 @@ class NullInterpolator(object):
 
 
 INTERPOLATORS = CaseInsensitiveMapping({
-    'Cubic Spline': CubicSplineInterpolator,
-    'Linear': LinearInterpolator,
-    'Null': NullInterpolator,
-    'Pchip': PchipInterpolator,
-    'Sprague': SpragueInterpolator})
+    'Cubic Spline':
+    CubicSplineInterpolator,
+    'Linear':
+    LinearInterpolator,
+    'Null':
+    NullInterpolator,
+    'Pchip':
+    PchipInterpolator,
+    'Sprague':
+    SpragueInterpolator
+})
 
 
 def nearest_index(a, b):
     index = np.searchsorted(a, b)
 
-    return np.where(np.abs(b - a[index - 1]) < np.fabs(b - a[index]),
-                    index - 1,
-                    index)
+    return np.where(
+        np.abs(b - a[index - 1]) < np.fabs(b - a[index]), index - 1, index)
 
 
 def nearest(a, b):
@@ -332,9 +338,7 @@ def fill_nan(a, method='Interpolation', default=np.nan):
 
     if method.lower() == 'interpolation':
         a[mask] = np.interp(
-            np.flatnonzero(mask),
-            np.flatnonzero(~mask),
-            a[~mask])
+            np.flatnonzero(mask), np.flatnonzero(~mask), a[~mask])
     elif method.lower() == 'constant':
         a[mask] = default
 
@@ -350,14 +354,17 @@ def is_pandas_installed():
         return False
 
 
-def unpack_data(data=None, domain=None):
+def unpack_data_for_signal(data=None, domain=None):
     domain_f, range_f, name_f = None, None, None
     if isinstance(data, Signal):
         domain_f = data.domain
         range_f = data.range
-    if (isinstance(data, tuple) or
-            isinstance(data, list) or
-            isinstance(data, np.ndarray)):
+    elif (issubclass(type(data), Sequence) or isinstance(data, tuple) or
+          isinstance(data, list) or isinstance(data, np.ndarray) or
+          isinstance(data, Iterator)):
+        if isinstance(data, Iterator):
+            data = list(data)
+
         data = np.asarray(data)
         if data.ndim == 1:
             range_f = data
@@ -365,8 +372,8 @@ def unpack_data(data=None, domain=None):
             domain_f, range_f = tsplit(data)
         else:
             raise ValueError('"data" must be a 1d or 2d array-like variable!')
-    elif (isinstance(data, dict) or
-              isinstance(data, OrderedDict)):
+    elif (issubclass(type(data), Mapping) or isinstance(data, dict) or
+          isinstance(data, OrderedDict)):
         domain_f, range_f = tsplit(sorted(data.items()))
     elif is_pandas_installed():
         if isinstance(data, Series):
@@ -396,10 +403,11 @@ class Signal(object):
         self._extrapolator_args = {
             'method': 'Constant',
             'left': np.nan,
-            'right': np.nan}
+            'right': np.nan
+        }
         self._name = '{0} ({1})'.format(self.__class__.__name__, id(self))
 
-        domain_f, range_f, name_f = unpack_data(data, domain)
+        domain_f, range_f, name_f = unpack_data_for_signal(data, domain)
         name_f = name_f if name is None else name
 
         self.domain = domain_f
@@ -476,10 +484,9 @@ class Signal(object):
     @interpolator_args.setter
     def interpolator_args(self, value):
         if value is not None:
-            assert type(value) in (dict, OrderedDict), (
-                ('"{0}" attribute: "{1}" type is not '
-                 '"dict" or "OrderedDict"!').format(
-                    'interpolator_args', value))
+            assert type(value) in (dict, OrderedDict), ((
+                '"{0}" attribute: "{1}" type is not '
+                '"dict" or "OrderedDict"!').format('interpolator_args', value))
 
             self._interpolator_args = value
             self._create_function()
@@ -502,10 +509,9 @@ class Signal(object):
     @extrapolator_args.setter
     def extrapolator_args(self, value):
         if value is not None:
-            assert type(value) in (dict, OrderedDict), (
-                ('"{0}" attribute: "{1}" type is not '
-                 '"dict" or "OrderedDict"!').format(
-                    'extrapolator_args', value))
+            assert type(value) in (dict, OrderedDict), ((
+                '"{0}" attribute: "{1}" type is not '
+                '"dict" or "OrderedDict"!').format('extrapolator_args', value))
 
             self._extrapolator_args = value
             self._create_function()
@@ -517,7 +523,7 @@ class Signal(object):
     @name.setter
     def name(self, value):
         if value is not None:
-            assert type(value) in (str, unicode), (  # noqa
+            assert is_string(value), (  # noqa
                 ('"{0}" attribute: "{1}" type is not '
                  '"str" or "unicode"!').format('name', value))
             self._name = value
@@ -541,10 +547,10 @@ class Signal(object):
                 self._function = self._extrapolator(
                     self._interpolator(
                         np.copy(self._domain),
-                        np.copy(self._range),
-                        **self._interpolator_args),
+                        np.copy(self._range), **self._interpolator_args),
                     **self._extrapolator_args)
         else:
+
             def _undefined_signal_interpolator_function(*args, **kwargs):
                 raise RuntimeError(
                     'Underlying signal interpolator function does not exists, '
@@ -562,11 +568,10 @@ class Signal(object):
     def __repr__(self):
         try:
             representation = repr(tstack((self.domain, self.range)))
-            representation = representation.replace(
-                'array', self.__class__.__name__)
-            representation = representation.replace(
-                '       [', '{0}['.format(
-                    ' ' * (len(self.__class__.__name__) + 2)))
+            representation = representation.replace('array',
+                                                    self.__class__.__name__)
+            representation = representation.replace('       [', '{0}['.format(
+                ' ' * (len(self.__class__.__name__) + 2)))
 
             return representation
         except TypeError:
@@ -604,21 +609,21 @@ class Signal(object):
         self._create_function
 
     def __contains__(self, x):
-        return np.all(np.where(
-            np.logical_and(
-                x >= np.min(self._domain),
-                x <= np.max(self._domain)),
-            True,
-            False))
+        return np.all(
+            np.where(
+                np.logical_and(x >= np.min(self._domain), x <=
+                               np.max(self._domain)), True, False))
 
     def __eq__(self, x):
         if isinstance(x, self.__class__):
-            if all((np.array_equal(self._domain, x.domain),
+            if all([
+                    np.array_equal(self._domain, x.domain),
                     np.array_equal(self._range, x.range),
-                    isinstance(self._interpolator, x.interpolator.__class__),
+                    self._interpolator is x.interpolator,
                     self._interpolator_args == x.interpolator_args,
-                    isinstance(self._extrapolator, x.extrapolator.__class__),
-                    self._extrapolator_args == x.extrapolator_args)):
+                    self._extrapolator is x.extrapolator,
+                    self._extrapolator_args == x.extrapolator_args
+            ]):
                 return True
 
         return False
@@ -642,7 +647,8 @@ class Signal(object):
             '-': (sub, isub),
             '*': (mul, imul),
             '/': (div, idiv),
-            '**': (pow, ipow)}[operator]
+            '**': (pow, ipow)
+        }[operator]
 
         if in_place:
             if isinstance(x, self.__class__):
@@ -651,8 +657,6 @@ class Signal(object):
 
                     exclusive_or = np.setxor1d(self._domain, x.domain)
                     self[exclusive_or] = np.full(exclusive_or.shape, np.nan)
-                    # Previous implementation, fails with interpolation.
-                    # self[x.domain] = operator(self[x.domain], x.range)
             else:
                 with ndarray_write(self._range):
                     self.range = ioperator(self.range, x)
@@ -738,7 +742,7 @@ def test_object_initialisation():
     domain_a = np.linspace(0, 1, 10)
     range = np.linspace(1, 10, domain.size)
 
-    data = zip(domain, range)
+    data = list(zip(domain, range))
 
     cs1 = Signal(range, domain)
     assert re.match('Signal \(\d+\)', cs1.name)
@@ -783,14 +787,12 @@ def test_getter():
     cs1 = Signal(range, domain)
     np.testing.assert_approx_equal(cs1[150.25], 2.5025)
 
-    np.testing.assert_array_almost_equal(
-        cs1[np.linspace(100, 400, 10)],
-        [2., 2.33333333, 2.66666667, 3., 3.33333333,
-         3.66666667, 4., 4.33333333, 4.66666667, 5.])
+    np.testing.assert_array_almost_equal(cs1[np.linspace(100, 400, 10)], [
+        2., 2.33333333, 2.66666667, 3., 3.33333333, 3.66666667, 4., 4.33333333,
+        4.66666667, 5.
+    ])
 
-    np.testing.assert_array_almost_equal(
-        cs1[0:3],
-        [1., 2., 3.])
+    np.testing.assert_array_almost_equal(cs1[0:3], [1., 2., 3.])
 
 
 def test_setter():
@@ -801,51 +803,44 @@ def test_setter():
 
     cs1[10] = np.pi
     np.testing.assert_array_almost_equal(
-        cs1.domain,
-        [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 900])
+        cs1.domain, [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 900])
     np.testing.assert_array_almost_equal(
-        cs1.range,
-        [1, 3.14159265, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        cs1.range, [1, 3.14159265, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 
     cs1[(200, 300)] = np.pi
     np.testing.assert_array_almost_equal(
-        cs1.domain,
-        [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 900])
-    np.testing.assert_array_almost_equal(
-        cs1.range,
-        [1, 3.14159265, 2, 3.14159265, 3.14159265, 5, 6, 7, 8, 9, 10])
+        cs1.domain, [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 900])
+    np.testing.assert_array_almost_equal(cs1.range, [
+        1, 3.14159265, 2, 3.14159265, 3.14159265, 5, 6, 7, 8, 9, 10
+    ])
 
     cs1[(0, 850)] = np.pi
     np.testing.assert_array_almost_equal(
-        cs1.domain,
-        [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 850, 900])
-    np.testing.assert_array_almost_equal(
-        cs1.range,
-        [3.14159265, 3.14159265, 2, 3.14159265, 3.14159265, 5, 6, 7, 8, 9,
-         3.14159265, 10])
+        cs1.domain, [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 850, 900])
+    np.testing.assert_array_almost_equal(cs1.range, [
+        3.14159265, 3.14159265, 2, 3.14159265, 3.14159265, 5, 6, 7, 8, 9,
+        3.14159265, 10
+    ])
 
     cs1[0:9] = -np.pi
     np.testing.assert_array_almost_equal(
-        cs1.domain,
-        [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 850, 900])
-    np.testing.assert_array_almost_equal(
-        cs1.range,
-        [-3.14159265, -3.14159265, -3.14159265, -3.14159265,
-         -3.14159265, -3.14159265, -3.14159265, -3.14159265,
-         -3.14159265, 9, 3.14159265, 10])
+        cs1.domain, [0, 10, 100, 200, 300, 400, 500, 600, 700, 800, 850, 900])
+    np.testing.assert_array_almost_equal(cs1.range, [
+        -3.14159265, -3.14159265, -3.14159265, -3.14159265, -3.14159265,
+        -3.14159265, -3.14159265, -3.14159265, -3.14159265, 9, 3.14159265, 10
+    ])
 
     cs1[(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)] = np.pi
-    np.testing.assert_array_almost_equal(
-        cs1.domain,
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 100, 200,
-         300, 400, 500, 600, 700, 800, 850, 900])
-    np.testing.assert_array_almost_equal(
-        cs1.range,
-        [-3.14159265, 3.14159265, 3.14159265, 3.14159265,
-         3.14159265, 3.14159265, 3.14159265, 3.14159265,
-         3.14159265, 3.14159265, 3.14159265, -3.14159265,
-         -3.14159265, -3.14159265, -3.14159265, -3.14159265,
-         -3.14159265, -3.14159265, 9, 3.14159265, 10])
+    np.testing.assert_array_almost_equal(cs1.domain, [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 100, 200, 300, 400, 500, 600, 700,
+        800, 850, 900
+    ])
+    np.testing.assert_array_almost_equal(cs1.range, [
+        -3.14159265, 3.14159265, 3.14159265, 3.14159265, 3.14159265,
+        3.14159265, 3.14159265, 3.14159265, 3.14159265, 3.14159265, 3.14159265,
+        -3.14159265, -3.14159265, -3.14159265, -3.14159265, -3.14159265,
+        -3.14159265, -3.14159265, 9, 3.14159265, 10
+    ])
 
 
 def test_contains():
@@ -895,8 +890,7 @@ def test_uncertainty():
     cs1 = Signal(range, domain)
 
     np.testing.assert_array_equal(
-        cs1.uncertainty((0.1, 150, 200)),
-        [0.1, 50, 0])
+        cs1.uncertainty((0.1, 150, 200)), [0.1, 50, 0])
 
 
 def test_arithmetical_operations_with_matching_domain():
@@ -929,52 +923,56 @@ def test_arithmetical_operations_with_mismatching_domain():
     cs1 = Signal(range, domain)
     cs2 = Signal(range, domain + 400)
     cs1 += cs2
-    np.testing.assert_array_almost_equal(
-        cs1.domain,
-        np.array(
-            [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200,
-             1300]))
-    np.testing.assert_array_almost_equal(
-        cs1.range,
-        np.array(
-            [np.nan, np.nan, np.nan, np.nan, 6, 8, 10, 12, 14, 16, np.nan,
-             np.nan, np.nan, np.nan]))
+    np.testing.assert_array_almost_equal(cs1.domain,
+                                         np.array([
+                                             0, 100, 200, 300, 400, 500, 600,
+                                             700, 800, 900, 1000, 1100, 1200,
+                                             1300
+                                         ]))
+    np.testing.assert_array_almost_equal(cs1.range,
+                                         np.array([
+                                             np.nan, np.nan, np.nan, np.nan, 6,
+                                             8, 10, 12, 14, 16, np.nan, np.nan,
+                                             np.nan, np.nan
+                                         ]))
 
     cs1 += 1
-    np.testing.assert_array_almost_equal(
-        cs1.range,
-        np.array(
-            [np.nan, np.nan, np.nan, np.nan, 7, 9, 11, 13, 15, 17, np.nan,
-             np.nan, np.nan, np.nan]))
+    np.testing.assert_array_almost_equal(cs1.range,
+                                         np.array([
+                                             np.nan, np.nan, np.nan, np.nan, 7,
+                                             9, 11, 13, 15, 17, np.nan, np.nan,
+                                             np.nan, np.nan
+                                         ]))
 
     cs1 -= np.ones(cs1.domain.size)
-    np.testing.assert_array_almost_equal(
-        cs1.range,
-        np.array(
-            [np.nan, np.nan, np.nan, np.nan, 6, 8, 10, 12, 14, 16, np.nan,
-             np.nan, np.nan, np.nan]))
+    np.testing.assert_array_almost_equal(cs1.range,
+                                         np.array([
+                                             np.nan, np.nan, np.nan, np.nan, 6,
+                                             8, 10, 12, 14, 16, np.nan, np.nan,
+                                             np.nan, np.nan
+                                         ]))
 
     cs2 = cs1 + cs2
-    np.testing.assert_array_almost_equal(
-        cs2.range,
-        np.array(
-            [np.nan, np.nan, np.nan, np.nan, 7, 10, 13, 16, 19, 22, np.nan,
-             np.nan, np.nan, np.nan]))
+    np.testing.assert_array_almost_equal(cs2.range,
+                                         np.array([
+                                             np.nan, np.nan, np.nan, np.nan, 7,
+                                             10, 13, 16, 19, 22, np.nan,
+                                             np.nan, np.nan, np.nan
+                                         ]))
 
     cs1.interpolator = CubicSplineInterpolator
     cs2 = cs1 + cs1
     np.testing.assert_array_almost_equal(
         cs2.range,
-        np.array(
-            [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
-             np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]))
+        np.array([
+            np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
+            np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
+        ]))
 
     cs1.fill_nan('constant')
     cs2 = cs1 + cs1
     np.testing.assert_array_almost_equal(
-        cs2.range,
-        np.array(
-            [0, 0, 0, 0, 12, 16, 20, 24, 28, 32, 0, 0, 0, 0]))
+        cs2.range, np.array([0, 0, 0, 0, 12, 16, 20, 24, 28, 32, 0, 0, 0, 0]))
 
 
 # Spectral Power Distribution
@@ -988,7 +986,11 @@ class Spectrum(Signal):
         # TODO: Define relevant default for spectral computations.
         settings = {
             'interpolator': PchipInterpolator,
-            'extrapolator_args': {'left': None, 'right': None}}
+            'extrapolator_args': {
+                'left': None,
+                'right': None
+            }
+        }
 
         settings.update(kwargs)
 
@@ -1038,7 +1040,36 @@ def test_repr():
 
 def test_normalise():
     s1 = Spectrum(ILLUMINANTS_RELATIVE_SPDS_DATA['C'])
-    print(s1.normalise())
+    s1_n = s1.normalise()
+    np.testing.assert_almost_equal(
+        s1_n.values,
+        np.array([
+            0.00000000, 0.00000000, 0.00000000, 0.00000000, 0.00805867,
+            0.16117334, 0.32234668, 1.24909340, 2.17584012, 3.90845354,
+            5.64106697, 8.01837376, 10.39568055, 13.86090741, 17.24554759,
+            22.16133452, 26.59360142, 32.17019905, 38.19808204, 44.45966637,
+            51.01136272, 57.86928842, 64.95285680, 72.14924651, 79.05552422,
+            85.26069788, 90.57941816, 94.89080506, 97.91280522, 99.48424531,
+            99.92747200, 99.60512531, 99.20219196, 99.36336530, 99.76629865,
+            100.00000000, 99.84688533, 99.05713595, 97.26811185, 94.20581836,
+            90.33765815, 86.21162060, 82.44016440, 79.62768958, 78.08848416,
+            77.99178016, 78.97493755, 80.53831896, 82.27899105, 83.76984447,
+            84.77717785, 85.15593521, 84.85776453, 83.89878314, 82.44016440,
+            80.70755097, 78.81376420, 76.90386010, 75.10677734, 73.51116125,
+            72.28624386, 71.58513982, 71.23861713, 71.06938512, 70.99685712,
+            70.96462245, 70.91627045, 70.80344911, 70.75509711, 70.90821178,
+            71.07744379, 71.07744379, 70.83568378, 70.28769442, 69.54629704,
+            68.74043033, 67.69280361, 66.25030220, 64.63051011, 63.05101136,
+            61.48762995, 59.92424853, 58.34474978, 56.73301636, 55.04069627,
+            53.42896285, 51.89781610, 50.60842937, 49.56080264, 48.51317592,
+            47.70730921, 47.14320251, 46.82085583, 46.74026916, 46.90144250,
+            47.14320251, 47.62672254
+        ]))
+
+
+class MultiSignal(object):
+    def __init__(self, data=None, domain=None, **kwargs):
+        pass
 
 
 test_empty_object_initialisation()
