@@ -16,6 +16,7 @@ except ImportError:
     div = truediv
     idiv = itruediv
 from pandas import Series
+from pprint import pprint
 
 from colour import (CaseInsensitiveMapping, CubicSplineInterpolator,
                     Extrapolator, LinearInterpolator, PchipInterpolator,
@@ -354,38 +355,6 @@ def is_pandas_installed():
         return False
 
 
-def unpack_data_for_signal(data=None, domain=None):
-    domain_f, range_f, name_f = None, None, None
-    if isinstance(data, Signal):
-        domain_f = data.domain
-        range_f = data.range
-    elif (issubclass(type(data), Sequence) or isinstance(data, tuple) or
-          isinstance(data, list) or isinstance(data, np.ndarray) or
-          isinstance(data, Iterator)):
-        if isinstance(data, Iterator):
-            data = list(data)
-
-        data = np.asarray(data)
-        if data.ndim == 1:
-            range_f = data
-        elif data.ndim == 2:
-            domain_f, range_f = tsplit(data)
-        else:
-            raise ValueError('"data" must be a 1d or 2d array-like variable!')
-    elif (issubclass(type(data), Mapping) or isinstance(data, dict) or
-          isinstance(data, OrderedDict)):
-        domain_f, range_f = tsplit(sorted(data.items()))
-    elif is_pandas_installed():
-        if isinstance(data, Series):
-            domain_f = data.index.values
-            range_f = data.values
-            name_f = data.name
-
-    domain_f = domain_f if domain is None else domain
-
-    return domain_f, range_f, name_f
-
-
 class Signal(object):
     def __init__(self, data=None, domain=None, **kwargs):
 
@@ -405,18 +374,14 @@ class Signal(object):
             'left': np.nan,
             'right': np.nan
         }
-        self._name = '{0} ({1})'.format(self.__class__.__name__, id(self))
+        self._name = ('{0} ({1})'.format(self.__class__.__name__, id(self)) if name is None else name)
 
-        domain_f, range_f, name_f = unpack_data_for_signal(data, domain)
-        name_f = name_f if name is None else name
+        self.domain, self.range = self.signal_unpack_data(data, domain)
 
-        self.domain = domain_f
-        self.range = range_f
         self.interpolator = interpolator
         self.interpolator_args = interpolator_args
         self.extrapolator = extrapolator
         self.extrapolator_args = extrapolator_args
-        self.name = name_f
 
         self._create_function()
 
@@ -700,6 +665,36 @@ class Signal(object):
     def __pow__(self, x):
         return self._arithmetical_operation(x, '**')
 
+    @staticmethod
+    def signal_unpack_data(data=None, domain=None):
+        domain_upk, range_upk = None, None
+        if isinstance(data, Signal):
+            domain_upk = data.domain
+            range_upk = data.range
+        elif (issubclass(type(data), Sequence) or
+              isinstance(data, (tuple, list, np.ndarray, Iterator))):
+            data = tsplit(list(data) if isinstance(data, Iterator) else data)
+            assert data.ndim in (1, 2), (
+                'User "data" must be a 1d or 2d array-like variable!')
+            if data.ndim == 1:
+                domain_upk, range_upk = np.linspace(0, 1, data.size), data
+            else:
+                domain_upk, range_upk = data
+        elif (issubclass(type(data), Mapping) or
+              isinstance(data, (dict, OrderedDict))):
+            domain_upk, range_upk = tsplit(sorted(data.items()))
+        elif is_pandas_installed():
+            if isinstance(data, Series):
+                domain_upk = data.index.values
+                range_upk = data.values
+
+        if domain is not None and range_upk is not None:
+            assert len(domain) == len(range_upk), (
+                'User "domain" is not compatible with unpacked range!')
+            domain_upk = domain
+
+        return domain_upk, range_upk
+
     def copy(self):
         return deepcopy(self)
 
@@ -713,7 +708,7 @@ class Signal(object):
         return np.abs(x - n)
 
 
-def test_empty_object_initialisation():
+def test_signal_empty_object_initialisation():
     cs1 = Signal()
     try:
         print(cs1[0])
@@ -737,7 +732,7 @@ def test_empty_object_initialisation():
         print(error)
 
 
-def test_object_initialisation():
+def test_signal_object_initialisation():
     domain = np.arange(0, 1000, 100)
     domain_a = np.linspace(0, 1, 10)
     range = np.linspace(1, 10, domain.size)
@@ -765,13 +760,13 @@ def test_object_initialisation():
     np.testing.assert_array_equal(cs1.range, range)
     np.testing.assert_array_equal(cs1.domain, domain)
 
-    cs1 = Signal(Series(range, domain, name='D65'))
+    cs1 = Signal(Series(range, domain), name='D65')
     assert cs1.name == 'D65'
     np.testing.assert_array_equal(cs1.range, range)
     np.testing.assert_array_equal(cs1.domain, domain)
 
 
-def test_copy_operations():
+def test_signal_copy_operations():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -780,7 +775,7 @@ def test_copy_operations():
     assert id(cs1) != id(cs2)
 
 
-def test_getter():
+def test_signal_getter():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -795,7 +790,7 @@ def test_getter():
     np.testing.assert_array_almost_equal(cs1[0:3], [1., 2., 3.])
 
 
-def test_setter():
+def test_signal_setter():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -843,7 +838,7 @@ def test_setter():
     ])
 
 
-def test_contains():
+def test_signal_contains():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -852,7 +847,7 @@ def test_contains():
     assert (110, 1000) not in cs1
 
 
-def test_equality():
+def test_signal_equality():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -871,7 +866,7 @@ def test_equality():
     assert cs1 == cs2
 
 
-def test_NullInterpolator():
+def test_signal_NullInterpolator():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -883,7 +878,7 @@ def test_NullInterpolator():
     assert cs1[100.0000001] == 2
 
 
-def test_uncertainty():
+def test_signal_uncertainty():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -893,7 +888,7 @@ def test_uncertainty():
         cs1.uncertainty((0.1, 150, 200)), [0.1, 50, 0])
 
 
-def test_arithmetical_operations_with_matching_domain():
+def test_signal_arithmetical_operations_with_matching_domain():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -916,7 +911,7 @@ def test_arithmetical_operations_with_matching_domain():
     np.testing.assert_array_almost_equal(cs2.range, range * 4)
 
 
-def test_arithmetical_operations_with_mismatching_domain():
+def test_signal_arithmetical_operations_with_mismatching_domain():
     domain = np.arange(0, 1000, 100)
     range = np.linspace(1, 10, domain.size)
 
@@ -1022,7 +1017,7 @@ class Spectrum(Signal):
     @title.setter
     def title(self, value):
         if value is not None:
-            assert type(value) in (str, unicode), (  # noqa
+            assert is_string(value), (  # noqa
                 ('"{0}" attribute: "{1}" type is not '
                  '"str" or "unicode"!').format('title', value))
         self._title = value
@@ -1033,12 +1028,12 @@ class Spectrum(Signal):
         return self
 
 
-def test_repr():
+def test_signal_repr():
     s1 = Spectrum(ILLUMINANTS_RELATIVE_SPDS_DATA['A'])
     print(repr(s1))
 
 
-def test_normalise():
+def test_signal_normalise():
     s1 = Spectrum(ILLUMINANTS_RELATIVE_SPDS_DATA['C'])
     s1_n = s1.normalise()
     np.testing.assert_almost_equal(
@@ -1067,21 +1062,121 @@ def test_normalise():
         ]))
 
 
-class MultiSignal(object):
-    def __init__(self, data=None, domain=None, **kwargs):
-        pass
+test_signal_empty_object_initialisation()
+test_signal_object_initialisation()
+test_signal_copy_operations()
+test_signal_getter()
+test_signal_setter()
+test_signal_contains()
+test_signal_equality()
+test_signal_NullInterpolator()
+test_signal_uncertainty()
+test_signal_arithmetical_operations_with_matching_domain()
+test_signal_arithmetical_operations_with_mismatching_domain()
+
+# test_signal_repr()
+# test_signal_normalise()
 
 
-test_empty_object_initialisation()
-test_object_initialisation()
-test_copy_operations()
-test_getter()
-test_setter()
-test_contains()
-test_equality()
-test_NullInterpolator()
-test_uncertainty()
-test_arithmetical_operations_with_matching_domain()
-test_arithmetical_operations_with_mismatching_domain()
-test_repr()
-test_normalise()
+class MultiSignal(Signal):
+    def __init__(self, data=None, domain=None, index=None, **kwargs):
+        super(MultiSignal, self).__init__(data, domain, **kwargs)
+
+        self._signals = self.multi_signal_unpack_data(data, domain, index)
+
+    @property
+    def domain(self):
+        if len(self._signals) != 0:
+            return self._signals[0].domain
+
+    @domain.setter
+    def domain(self, value):
+        if value is not None:
+            pass
+
+    @property
+    def range(self):
+        if len(self._signals) != 0:
+            return tstack([signal.range for signal in self._signals.values()])
+
+    @range.setter
+    def range(self, value):
+        if value is not None:
+            pass
+
+    @property
+    def signals(self):
+        return self._signals
+
+    @signals.setter
+    def signals(self, value):
+        if value is not None:
+            self._signals = self.multi_signal_unpack_data(value)
+
+    @staticmethod
+    def signal_unpack_data(data=None, domain=None):
+        return None, None
+
+    @staticmethod
+    def multi_signal_unpack_data(data=None, domain=None, index=None):
+        domain_upk, range_upk, signals = None, None, None
+        if isinstance(data, MultiSignal):
+            signals = data.signals
+        elif (issubclass(type(data), Sequence) or
+              isinstance(data, (tuple, list, np.ndarray, Iterator))):
+            data = tsplit(list(data) if isinstance(data, Iterator) else data)
+            assert data.ndim in (1, 2), (
+                'User "data" must be a 1d or 2d array-like variable!')
+            signals = OrderedDict()
+            if data.ndim == 1:
+                signals[0] = Signal(data, np.linspace(0, 1, data.size))
+            else:
+                domain_upk, range_upk = ((data[0], data[1:])
+                                         if domain is None else (domain, data))
+                for i, range_upk_c in enumerate(range_upk):
+                    signals[i] = Signal(range_upk_c, domain_upk)
+        elif (issubclass(type(data), Mapping) or
+              isinstance(data, (dict, OrderedDict))):
+            domain_upk, range_upk = tsplit(sorted(data.items()))
+            signals = OrderedDict()
+            for i, range_upk in enumerate(tsplit(range_upk)):
+                signals[i] = Signal(range_upk, domain_upk)
+        elif is_pandas_installed():
+            pass
+
+        if domain is not None and signals is not None:
+            for signal in signals.values():
+                assert len(domain) == len(signal.domain), (
+                    'User "domain" is not compatible with unpacked signals!')
+                signal.domain = domain
+
+        if index is not None and signals is not None:
+            assert len(index) == len(signals), (
+                'User "index" is not compatible with unpacked signals!')
+            signals = OrderedDict(
+                [(index[i], value)
+                 for i, (key, value) in enumerate(signals.items())])
+
+        return signals
+
+
+domain = np.arange(0, 1000, 100)
+range_1 = np.linspace(1, 10, domain.size)
+range_2 = np.linspace(1, 10, domain.size) + 1
+range_3 = np.linspace(1, 10, domain.size) + 2
+
+print('*' * 79)
+cms1 = MultiSignal(tstack((domain, range_1, range_2, range_3)))
+pprint(cms1.signals)
+print(cms1.domain)
+print(cms1.range)
+
+cms2 = MultiSignal(range_1)
+pprint(cms2.signals)
+
+cms3 = MultiSignal(range_1, index=['My Label'])
+pprint(cms3.signals)
+
+cms4 = MultiSignal(
+    tstack((range_1, range_2, range_3)), domain / 1000, ('a', 'b', 'c'))
+pprint(cms4.signals)
