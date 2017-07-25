@@ -1,8 +1,6 @@
 # coding: utf-8
 from __future__ import division, unicode_literals
 
-import numpy as np
-import re
 from contextlib import contextmanager
 from copy import deepcopy
 from collections import Iterator, Mapping, OrderedDict, Sequence
@@ -15,7 +13,9 @@ except ImportError:
 
     div = truediv
     idiv = itruediv
-from pandas import Series
+import numpy as np
+import re
+from pandas import DataFrame, Series
 from pprint import pprint
 
 from colour import (CaseInsensitiveMapping, CubicSplineInterpolator,
@@ -374,7 +374,8 @@ class Signal(object):
             'left': np.nan,
             'right': np.nan
         }
-        self._name = ('{0} ({1})'.format(self.__class__.__name__, id(self)) if name is None else name)
+        self._name = ('{0} ({1})'.format(self.__class__.__name__, id(self))
+                      if name is None else name)
 
         self.domain, self.range = self.signal_unpack_data(data, domain)
 
@@ -1092,7 +1093,8 @@ class MultiSignal(Signal):
     @domain.setter
     def domain(self, value):
         if value is not None:
-            pass
+           for signal in self._signals:
+               signal.domain = value
 
     @property
     def range(self):
@@ -1118,8 +1120,9 @@ class MultiSignal(Signal):
         return None, None
 
     @staticmethod
-    def multi_signal_unpack_data(data=None, domain=None, index=None):
+    def multi_signal_unpack_data(data=None, domain=None, labels=None):
         domain_upk, range_upk, signals = None, None, None
+        signals = OrderedDict()
         if isinstance(data, MultiSignal):
             signals = data.signals
         elif (issubclass(type(data), Sequence) or
@@ -1127,7 +1130,6 @@ class MultiSignal(Signal):
             data = tsplit(list(data) if isinstance(data, Iterator) else data)
             assert data.ndim in (1, 2), (
                 'User "data" must be a 1d or 2d array-like variable!')
-            signals = OrderedDict()
             if data.ndim == 1:
                 signals[0] = Signal(data, np.linspace(0, 1, data.size))
             else:
@@ -1138,11 +1140,13 @@ class MultiSignal(Signal):
         elif (issubclass(type(data), Mapping) or
               isinstance(data, (dict, OrderedDict))):
             domain_upk, range_upk = tsplit(sorted(data.items()))
-            signals = OrderedDict()
             for i, range_upk in enumerate(tsplit(range_upk)):
                 signals[i] = Signal(range_upk, domain_upk)
         elif is_pandas_installed():
-            pass
+            if isinstance(data, Series):
+                signals[0] = Signal(data)
+            elif isinstance(data, DataFrame):
+                signals = data.to_dict()
 
         if domain is not None and signals is not None:
             for signal in signals.values():
@@ -1150,33 +1154,48 @@ class MultiSignal(Signal):
                     'User "domain" is not compatible with unpacked signals!')
                 signal.domain = domain
 
-        if index is not None and signals is not None:
-            assert len(index) == len(signals), (
-                'User "index" is not compatible with unpacked signals!')
+        if labels is not None and signals is not None:
+            assert len(labels) == len(signals), (
+                'User "labels" is not compatible with unpacked signals!')
             signals = OrderedDict(
-                [(index[i], value)
+                [(labels[i], value)
                  for i, (key, value) in enumerate(signals.items())])
 
         return signals
 
 
-domain = np.arange(0, 1000, 100)
-range_1 = np.linspace(1, 10, domain.size)
-range_2 = np.linspace(1, 10, domain.size) + 1
-range_3 = np.linspace(1, 10, domain.size) + 2
+def test_multi_signal_empty_object_initialisation():
+    pass
 
-print('*' * 79)
-cms1 = MultiSignal(tstack((domain, range_1, range_2, range_3)))
-pprint(cms1.signals)
-print(cms1.domain)
-print(cms1.range)
 
-cms2 = MultiSignal(range_1)
-pprint(cms2.signals)
+def test_multi_signal_oject_initialisation():
+    domain = np.arange(0, 1000, 100)
+    range_1 = np.linspace(1, 10, domain.size)
+    range_2 = np.linspace(1, 10, domain.size) + 1
+    range_3 = np.linspace(1, 10, domain.size) + 2
 
-cms3 = MultiSignal(range_1, index=['My Label'])
-pprint(cms3.signals)
+    print('*' * 79)
+    cms1 = MultiSignal(tstack((domain, range_1, range_2, range_3)))
+    pprint(cms1.signals)
+    print(cms1.domain)
+    print(cms1.range)
 
-cms4 = MultiSignal(
-    tstack((range_1, range_2, range_3)), domain / 1000, ('a', 'b', 'c'))
-pprint(cms4.signals)
+    cms2 = MultiSignal(range_1)
+    pprint(cms2.signals)
+
+    cms3 = MultiSignal(range_1, index=['My Label'])
+    pprint(cms3.signals)
+
+    cms4 = MultiSignal(
+        tstack((range_1, range_2, range_3)), domain / 1000, ('a', 'b', 'c'))
+    pprint(cms4.signals)
+
+    cms5 = MultiSignal(Series(range_1, domain))
+    pprint(cms5.signals)
+
+    dataframe = DataFrame({'aa': range_1, 'bb': range_2, 'cc': range_3})
+    cms6 = MultiSignal(dataframe)
+    pprint(cms6.signals)
+
+
+test_multi_signal_oject_initialisation()
