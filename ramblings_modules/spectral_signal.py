@@ -1080,21 +1080,21 @@ test_signal_arithmetical_operations_with_mismatching_domain()
 
 
 class MultiSignal(Signal):
-    def __init__(self, data=None, domain=None, index=None, **kwargs):
+    def __init__(self, data=None, domain=None, labels=None, **kwargs):
         super(MultiSignal, self).__init__(data, domain, **kwargs)
 
-        self._signals = self.multi_signal_unpack_data(data, domain, index)
+        self._signals = self.multi_signal_unpack_data(data, domain, labels)
 
     @property
     def domain(self):
         if len(self._signals) != 0:
-            return self._signals[0].domain
+            return self._signals[self.labels[0]].domain
 
     @domain.setter
     def domain(self, value):
         if value is not None:
-           for signal in self._signals:
-               signal.domain = value
+            for signal in self._signals:
+                signal.domain = value
 
     @property
     def range(self):
@@ -1114,6 +1114,19 @@ class MultiSignal(Signal):
     def signals(self, value):
         if value is not None:
             self._signals = self.multi_signal_unpack_data(value)
+
+    @property
+    def labels(self):
+        return list(self._signals.keys())
+
+    @labels.setter
+    def labels(self, value):
+        if value is not None:
+            assert len(value) == len(self._signals), (
+                '"labels" length does not match "signals" length!')
+            self._signals = OrderedDict(
+                [(value[i], signal)
+                 for i, (_key, signal) in enumerate(self._signals.items())])
 
     @staticmethod
     def signal_unpack_data(data=None, domain=None):
@@ -1146,7 +1159,9 @@ class MultiSignal(Signal):
             if isinstance(data, Series):
                 signals[0] = Signal(data)
             elif isinstance(data, DataFrame):
-                signals = data.to_dict()
+                # Check order consistency.
+                signals = {label: Signal(data, name=label)
+                           for label, data in data.to_dict().items()}
 
         if domain is not None and signals is not None:
             for signal in signals.values():
@@ -1158,8 +1173,8 @@ class MultiSignal(Signal):
             assert len(labels) == len(signals), (
                 'User "labels" is not compatible with unpacked signals!')
             signals = OrderedDict(
-                [(labels[i], value)
-                 for i, (key, value) in enumerate(signals.items())])
+                [(labels[i], signal)
+                 for i, (_key, signal) in enumerate(signals.items())])
 
         return signals
 
@@ -1174,28 +1189,32 @@ def test_multi_signal_oject_initialisation():
     range_2 = np.linspace(1, 10, domain.size) + 1
     range_3 = np.linspace(1, 10, domain.size) + 2
 
-    print('*' * 79)
     cms1 = MultiSignal(tstack((domain, range_1, range_2, range_3)))
-    pprint(cms1.signals)
-    print(cms1.domain)
-    print(cms1.range)
+    np.testing.assert_array_equal(cms1.range,
+                                  tstack((range_1, range_2, range_3)))
+    np.testing.assert_array_equal(cms1.domain, domain)
 
     cms2 = MultiSignal(range_1)
-    pprint(cms2.signals)
+    np.testing.assert_array_equal(cms2.range, range_1[:, np.newaxis])
+    np.testing.assert_array_equal(cms2.domain, np.linspace(0, 1, domain.size))
 
-    cms3 = MultiSignal(range_1, index=['My Label'])
-    pprint(cms3.signals)
+    cms3 = MultiSignal(range_1, labels=['My Label'])
+    assert list(cms3.signals.keys()) == ['My Label']
 
     cms4 = MultiSignal(
         tstack((range_1, range_2, range_3)), domain / 1000, ('a', 'b', 'c'))
-    pprint(cms4.signals)
+    np.testing.assert_array_equal(cms4.range,
+                                  tstack((range_1, range_2, range_3)))
+    np.testing.assert_array_equal(cms4.domain, domain / 1000)
+    assert list(cms4.signals.keys()) == ['a', 'b', 'c']
 
     cms5 = MultiSignal(Series(range_1, domain))
-    pprint(cms5.signals)
+    np.testing.assert_array_equal(cms5.range, range_1[:, np.newaxis])
+    np.testing.assert_array_equal(cms5.domain, domain)
 
     dataframe = DataFrame({'aa': range_1, 'bb': range_2, 'cc': range_3})
     cms6 = MultiSignal(dataframe)
-    pprint(cms6.signals)
+    np.testing.assert_array_equal(cms6.range, tstack((range_1, range_2, range_3)))
 
 
 test_multi_signal_oject_initialisation()
