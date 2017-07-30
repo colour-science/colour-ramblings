@@ -1160,8 +1160,9 @@ class MultiSignal(Signal):
                 signals[0] = Signal(data)
             elif isinstance(data, DataFrame):
                 # Check order consistency.
-                signals = {label: Signal(data, name=label)
-                           for label, data in data.to_dict().items()}
+                domain_upk = data.index.values
+                signals = OrderedDict(((label, Signal(
+                    data[label], domain_upk, name=label)) for label in data))
 
         if domain is not None and signals is not None:
             for signal in signals.values():
@@ -1206,15 +1207,18 @@ def test_multi_signal_oject_initialisation():
     np.testing.assert_array_equal(cms4.range,
                                   tstack((range_1, range_2, range_3)))
     np.testing.assert_array_equal(cms4.domain, domain / 1000)
-    assert list(cms4.signals.keys()) == ['a', 'b', 'c']
+    assert cms4.labels == ['a', 'b', 'c']
 
     cms5 = MultiSignal(Series(range_1, domain))
     np.testing.assert_array_equal(cms5.range, range_1[:, np.newaxis])
     np.testing.assert_array_equal(cms5.domain, domain)
 
-    dataframe = DataFrame({'aa': range_1, 'bb': range_2, 'cc': range_3})
+    dataframe = DataFrame(
+        OrderedDict([('aa', range_1), ('bb', range_2), ('cc', range_3)]))
     cms6 = MultiSignal(dataframe)
-    np.testing.assert_array_equal(cms6.range, tstack((range_1, range_2, range_3)))
+    np.testing.assert_array_equal(cms6.range,
+                                  tstack((range_1, range_2, range_3)))
 
+    assert cms6.labels == ['aa', 'bb', 'cc']
 
 test_multi_signal_oject_initialisation()
