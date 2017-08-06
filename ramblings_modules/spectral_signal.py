@@ -1,6 +1,7 @@
 # coding: utf-8
 from __future__ import division, unicode_literals
 
+from abc import ABCMeta, abstractmethod, abstractproperty
 from contextlib import contextmanager
 from copy import deepcopy
 from collections import Iterator, Mapping, OrderedDict, Sequence
@@ -355,14 +356,93 @@ def is_pandas_installed():
         return False
 
 
-class Signal(object):
+class AbstractFunction(metaclass=ABCMeta):
+    def __init__(self, name=None):
+        self._name = ('{0} ({1})'.format(self.__class__.__name__, id(self))
+                      if name is None else name)
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        if value is not None:
+            assert is_string(value), (  # noqa
+                ('"{0}" attribute: "{1}" type is not '
+                 '"str" or "unicode"!').format('name', value))
+            self._name = value
+
+    def get_domain(self):
+        pass
+
+    def set_domain(self, value):
+        pass
+
+    domain = abstractproperty(get_domain, set_domain)
+
+    def get_range(self):
+        pass
+
+    def set_range(self, value):
+        pass
+
+    range = abstractproperty(get_range, set_range)
+
+    def get_interpolator(self):
+        pass
+
+    def set_interpolator(self, value):
+        pass
+
+    # interpolator = abstractproperty(get_interpolator, set_interpolator)
+
+    def get_interpolator_args(self):
+        pass
+
+    def set_interpolator_args(self, value):
+        pass
+
+    # interpolator_args = abstractproperty(get_interpolator_args, set_interpolator_args)
+
+    def get_extrapolator(self):
+        pass
+
+    def set_extrapolator(self, value):
+        pass
+
+    # extrapolator = abstractproperty(get_extrapolator, set_extrapolator)
+
+    def get_extrapolator_args(self):
+        pass
+
+    def set_extrapolator_args(self, value):
+        pass
+
+    # extrapolator_args = abstractproperty(get_extrapolator_args, set_extrapolator_args)
+
+    def get_function(self):
+        pass
+
+    def set_function(self, value):
+        pass
+
+    # function = abstractproperty(get_function, set_function)
+
+
+    @abstractmethod
+    def __getitem__(self, x):
+        pass
+
+
+class Signal(AbstractFunction):
     def __init__(self, data=None, domain=None, **kwargs):
+        super(Signal, self).__init__(kwargs.get('name'))
 
         interpolator = kwargs.get('interpolator')
         interpolator_args = kwargs.get('interpolator_args')
         extrapolator = kwargs.get('extrapolator')
         extrapolator_args = kwargs.get('extrapolator_args')
-        name = kwargs.get('name')
 
         self._domain = None
         self._range = None
@@ -374,8 +454,6 @@ class Signal(object):
             'left': np.nan,
             'right': np.nan
         }
-        self._name = ('{0} ({1})'.format(self.__class__.__name__, id(self))
-                      if name is None else name)
 
         self.domain, self.range = self.signal_unpack_data(data, domain)
 
@@ -481,18 +559,6 @@ class Signal(object):
 
             self._extrapolator_args = value
             self._create_function()
-
-    @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, value):
-        if value is not None:
-            assert is_string(value), (  # noqa
-                ('"{0}" attribute: "{1}" type is not '
-                 '"str" or "unicode"!').format('name', value))
-            self._name = value
 
     @property
     def function(self):
@@ -678,6 +744,7 @@ class Signal(object):
             assert data.ndim in (1, 2), (
                 'User "data" must be a 1d or 2d array-like variable!')
             if data.ndim == 1:
+                # TODO: Swap for np.arange(0, data.size + 1)
                 domain_upk, range_upk = np.linspace(0, 1, data.size), data
             else:
                 domain_upk, range_upk = data
@@ -1079,9 +1146,9 @@ test_signal_arithmetical_operations_with_mismatching_domain()
 # test_signal_normalise()
 
 
-class MultiSignal(Signal):
+class MultiSignal(AbstractFunction):
     def __init__(self, data=None, domain=None, labels=None, **kwargs):
-        super(MultiSignal, self).__init__(data, domain, **kwargs)
+        super(MultiSignal, self).__init__(kwargs.get('name'))
 
         self._signals = self.multi_signal_unpack_data(data, domain, labels)
 
@@ -1128,6 +1195,9 @@ class MultiSignal(Signal):
                 [(value[i], signal)
                  for i, (_key, signal) in enumerate(self._signals.items())])
 
+    def __getitem__(self, x):
+        return tstack([signal[x] for signal in self._signals.values()])
+
     @staticmethod
     def signal_unpack_data(data=None, domain=None):
         return None, None
@@ -1144,6 +1214,7 @@ class MultiSignal(Signal):
             assert data.ndim in (1, 2), (
                 'User "data" must be a 1d or 2d array-like variable!')
             if data.ndim == 1:
+                # TODO: Swap for np.arange(0, data.size + 1)
                 signals[0] = Signal(data, np.linspace(0, 1, data.size))
             else:
                 domain_upk, range_upk = ((data[0], data[1:])
@@ -1177,12 +1248,29 @@ class MultiSignal(Signal):
                 [(labels[i], signal)
                  for i, (_key, signal) in enumerate(signals.items())])
 
+        if len(signals) == 0:
+            signals[0] = Signal()
+
         return signals
 
 
 def test_multi_signal_empty_object_initialisation():
-    pass
+    cms1 = MultiSignal()
+    try:
+        print(cms1[0])
+    except RuntimeError as error:
+        print(error)
 
+    domain = np.arange(0, 1000, 100)
+    cms1 = MultiSignal(domain=domain)
+    try:
+        print(cms1[0])
+    except RuntimeError as error:
+        print(error)
+
+    range = np.linspace(1, 10, domain.size)
+    cms1 = MultiSignal(range, domain)
+    assert cms1[0] == 1
 
 def test_multi_signal_oject_initialisation():
     domain = np.arange(0, 1000, 100)
@@ -1220,5 +1308,8 @@ def test_multi_signal_oject_initialisation():
                                   tstack((range_1, range_2, range_3)))
 
     assert cms6.labels == ['aa', 'bb', 'cc']
+    np.testing.assert_array_equal(cms6.domain, np.arange(0, np.size(domain)))
 
+
+test_multi_signal_empty_object_initialisation()
 test_multi_signal_oject_initialisation()
