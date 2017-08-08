@@ -14,10 +14,10 @@ except ImportError:
 
     div = truediv
     idiv = itruediv
-import numpy as np
-import re
-from pandas import DataFrame, Series
-from pprint import pprint
+    import numpy as np
+    import re
+    from pandas import DataFrame, Series
+    from pprint import pprint
 
 from colour import (CaseInsensitiveMapping, CubicSplineInterpolator,
                     Extrapolator, LinearInterpolator, PchipInterpolator,
@@ -429,9 +429,16 @@ class AbstractFunction(metaclass=ABCMeta):
 
     # function = abstractproperty(get_function, set_function)
 
-
     @abstractmethod
     def __getitem__(self, x):
+        pass
+
+    # @abstractmethod
+    # def __setitem__(self, x, value):
+    #     pass
+
+    @abstractmethod
+    def copy(self):
         pass
 
 
@@ -1088,7 +1095,7 @@ class Spectrum(Signal):
             assert is_string(value), (  # noqa
                 ('"{0}" attribute: "{1}" type is not '
                  '"str" or "unicode"!').format('title', value))
-        self._title = value
+            self._title = value
 
     def normalise(self, factor=100):
         self.range = (self.range * (1 / np.max(self.range))) * factor
@@ -1253,6 +1260,9 @@ class MultiSignal(AbstractFunction):
 
         return signals
 
+    def copy(self):
+        return deepcopy(self)
+
 
 def test_multi_signal_empty_object_initialisation():
     cms1 = MultiSignal()
@@ -1271,6 +1281,7 @@ def test_multi_signal_empty_object_initialisation():
     range = np.linspace(1, 10, domain.size)
     cms1 = MultiSignal(range, domain)
     assert cms1[0] == 1
+
 
 def test_multi_signal_oject_initialisation():
     domain = np.arange(0, 1000, 100)
@@ -1311,5 +1322,45 @@ def test_multi_signal_oject_initialisation():
     np.testing.assert_array_equal(cms6.domain, np.arange(0, np.size(domain)))
 
 
+def test_multi_signal_copy_operations():
+    domain = np.arange(0, 1000, 100)
+    range_1 = np.linspace(1, 10, domain.size)
+    range_2 = np.linspace(1, 10, domain.size) + 1
+    range_3 = np.linspace(1, 10, domain.size) + 2
+
+    cms1 = MultiSignal(tstack((domain, range_1, range_2, range_3)))
+    cms2 = cms1.copy()
+    assert id(cms1) != id(cms2)
+
+
+def test_multi_signal_getter():
+    domain = np.arange(0, 1000, 100)
+    range_1 = np.linspace(1, 10, domain.size)
+    range_2 = np.linspace(1, 10, domain.size) + 1
+    range_3 = np.linspace(1, 10, domain.size) + 2
+
+    cms1 = MultiSignal(tstack((domain, range_1, range_2, range_3)))
+    np.testing.assert_array_almost_equal(cms1[150.25],
+                                         [2.5025, 3.5025, 4.5025])
+
+    np.testing.assert_array_almost_equal(
+        cms1[np.linspace(100, 400, 10)],
+        np.array([[2.00000000, 3.00000000,
+                   4.00000000], [2.33333333, 3.33333333, 4.33333333], [
+                       2.66666667, 3.66666667, 4.66666667
+                   ], [3.00000000, 4.00000000,
+                       5.00000000], [3.33333333, 4.33333333, 5.33333333],
+                  [3.66666667, 4.66666667,
+                   5.66666667], [4.00000000, 5.00000000, 6.00000000], [
+                       4.33333333, 5.33333333, 6.33333333
+                   ], [4.66666667, 5.66666667, 6.66666667],
+                  [5.00000000, 6.00000000, 7.00000000]]))
+
+    # np.testing.assert_array_almost_equal(cms1[0:3], [1., 2., 3.])
+
+
 test_multi_signal_empty_object_initialisation()
 test_multi_signal_oject_initialisation()
+test_multi_signal_copy_operations()
+test_multi_signal_getter()
+# test_multi_signal_setter()
